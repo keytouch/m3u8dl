@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/grafov/m3u8"
 	"io"
 	"m3u8dl/cbcio"
 	"net"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/grafov/m3u8"
 )
 
 const queueLen = 32
@@ -45,10 +46,12 @@ func download(pl *m3u8.MediaPlaylist) {
 		}
 	}
 
+	var segNum int
 	for _, seg := range pl.Segments {
 		if seg == nil {
 			continue
 		}
+		segNum++
 
 		if key := seg.Key; *flagKey == "" && key != nil {
 			if key.Method == "AES-128" {
@@ -82,7 +85,7 @@ func download(pl *m3u8.MediaPlaylist) {
 
 		seg := job{
 			id:  seg.SeqId,
-			url: *flagBaseUrl + seg.URI,
+			url: *flagBaseURL + seg.URI,
 			key: lastKey,
 			iv:  lastIV,
 		}
@@ -95,6 +98,7 @@ func download(pl *m3u8.MediaPlaylist) {
 	close(jobs)
 
 	wg.Wait()
+	merge(segNum)
 }
 
 func dlWorker(id int, jobs <-chan job, wg *sync.WaitGroup) {
@@ -170,6 +174,25 @@ func dlWorker(id int, jobs <-chan job, wg *sync.WaitGroup) {
 	wg.Done()
 }
 
-func mergeWrite() {
+func merge(segNum int) {
+	logger.Println("merging...")
+	merged, err := os.Create("merged.ts")
+	if err != nil {
+		logErr.Fatalln(err)
+	}
+	defer merged.Close()
 
+	for i := 0; i < segNum; i++ {
+		filename := *flagOutput + strconv.Itoa(i) + ".ts"
+		file, err := os.Open(filename)
+		if err != nil {
+			logErr.Fatalln(err)
+		}
+		_, err = io.Copy(merged, file)
+		if err != nil {
+			logErr.Fatalln(err)
+		}
+		file.Close()
+		os.Remove(filename)
+	}
 }

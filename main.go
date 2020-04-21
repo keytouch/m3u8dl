@@ -16,7 +16,7 @@ var (
 	flagInput   = flag.String("i", "", "File or Url to read")
 	flagOutput  = flag.String("o", "", "Destination to save the result")
 	flagThread  = flag.Int("thread", 1, "Concurrent downloading threads. Suggestion: <= 32 (no hard limit imposed)")
-	flagBaseUrl = flag.String("baseurl", "", "Base url to reference (useful when m3u8 file is local file)")
+	flagBaseURL = flag.String("baseurl", "", "Base url to reference (useful when m3u8 file is local file)")
 	flagKey     = flag.String("key", "", "Decryption key, overrides key declared in m3u8 (in 32-char hex form)")
 )
 
@@ -49,9 +49,9 @@ func main() {
 	if err != nil {
 		logErr.Fatalln(err)
 	}*/
-	if *flagBaseUrl == "" {
-		*flagBaseUrl = (*flagInput)[:strings.LastIndex(*flagInput, "/")+1]
-		fmt.Println(*flagBaseUrl)
+	if *flagBaseURL == "" {
+		*flagBaseURL = (*flagInput)[:strings.LastIndex(*flagInput, "/")+1]
+		fmt.Println(*flagBaseURL)
 	}
 
 	pl, err := decode(*flagInput)

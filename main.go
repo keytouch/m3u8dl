@@ -2,58 +2,42 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"strings"
 )
+
+const defaultUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36"
 
 var (
 	logger = log.New(os.Stdout, "", log.LstdFlags)
 	logErr = log.New(os.Stderr, "", log.LstdFlags)
 )
 var (
-	flagInput   = flag.String("i", "", "File or Url to read")
-	flagOutput  = flag.String("o", "", "Destination to save the result")
+	flagInput   = flag.String("i", "", "`file or URL` to read")
+	flagOutput  = flag.String("o", "", "Write to `file`")
+	flagTmpDir  = flag.String("t", "", "Tmp directory to store downloaded parts")
 	flagThread  = flag.Int("thread", 1, "Concurrent downloading threads. Suggestion: <= 32 (no hard limit imposed)")
-	flagBaseURL = flag.String("baseurl", "", "Base url to reference (useful when m3u8 file is local file)")
+	flagUA      = flag.String("UA", defaultUA, "Send User-Agent to server")
+	flagBaseURL = flag.String("baseurl", "", "Base URL to reference (useful when m3u8 file is local file)")
 	flagKey     = flag.String("key", "", "Decryption key, overrides key declared in m3u8 (in 32-char hex form)")
+	flagRaw     = flag.Bool("raw", false, "Don't attempt to decrypt. Usually you should also turn on nomerge")
+	flagNoMerge = flag.Bool("nomerge", false, "Don't attempt to merge segments (segments stay in the tmp directory)")
 )
 
 func main() {
-	//f, err := os.Open("media_b1973000_1.ts")
-	/*f, err := os.Open(`D:\tmp\test-enc.bin`)
-	if err != nil {
-		logErr.Fatalln(err)
-	}
-
-	key, _ := hex.DecodeString("5E0ECC501DBC368679689947B5E8D5E1")
-	iv, _ := hex.DecodeString("00000000000000000000000000000001")
-
-	out, err := os.Create("test1.ts")
-	if err != nil {
-		logErr.Fatalln(err)
-	}
-
-	w := cbcio.NewCBCWriter(out, key, iv)
-	fmt.Println(io.CopyBuffer(w, f, make([]byte, 8)))
-	fmt.Println(w.Flush())
-	//io.CopyBuffer(out, r, buf)
-	f.Close()
-	out.Close()
-
-	return*/
-
 	flag.Parse()
-	/*keyBin, err := hex.DecodeString(*key)
-	if err != nil {
-		logErr.Fatalln(err)
-	}*/
+
+	if *flagOutput == "" {
+		logErr.Fatalln("output file must be specified")
+	}
+
 	if *flagBaseURL == "" {
 		*flagBaseURL = (*flagInput)[:strings.LastIndex(*flagInput, "/")+1]
-		fmt.Println(*flagBaseURL)
 	}
+	logger.Println("using base URL:", *flagBaseURL)
 
+	logger.Println("decoding m3u8 from:", *flagInput)
 	pl, err := decode(*flagInput)
 	if err != nil {
 		logErr.Fatalln(err)

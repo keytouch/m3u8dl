@@ -8,9 +8,13 @@ import (
 	"m3u8dl/utils"
 )
 
+var ErrBadPadding = errors.New("bad padding")
+
 type Writer struct {
 	wr  io.Writer
 	buf []byte
+
+	decryptBuf []byte
 
 	blockMode cipher.BlockMode
 	bSize     int
@@ -22,16 +26,21 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	decryptLen := utils.Floor0(len(w.buf)+len(p), w.bSize)
 
 	if decryptLen > 0 {
-		decryptBuf := make([]byte, decryptLen)
-		// decrypt the buf and the heading part copy from p
+		// lazy make space for buf
+		if w.decryptBuf == nil || len(w.decryptBuf) < decryptLen {
+			w.decryptBuf = make([]byte, decryptLen)
+		}
+
+		// decrypt the buf and the heading part copied from p
 		n += copy(w.buf[len(w.buf):w.bSize], p)
-		w.blockMode.CryptBlocks(decryptBuf, w.buf[:w.bSize])
+		w.blockMode.CryptBlocks(w.decryptBuf, w.buf[:w.bSize])
 		// then decrypt the remaining part
-		w.blockMode.CryptBlocks(decryptBuf[w.bSize:], p[n:decryptLen-len(w.buf)])
+		w.blockMode.CryptBlocks(w.decryptBuf[w.bSize:], p[n:decryptLen-len(w.buf)])
+
 		w.buf = w.buf[:0]
 		n += decryptLen - w.bSize
 
-		_, err = w.wr.Write(decryptBuf)
+		_, err = w.wr.Write(w.decryptBuf[:decryptLen])
 		if err != nil {
 			return
 		}
@@ -53,13 +62,12 @@ func (w *Writer) Flush() (err error) {
 	w.blockMode.CryptBlocks(w.buf, w.buf)
 
 	padLen := int(w.buf[w.bSize-1])
-	errBadPadding := errors.New("bad padding")
-	if padLen == 0 || padLen > 16 {
-		return errBadPadding
+	if padLen == 0 || padLen > w.bSize {
+		return ErrBadPadding
 	}
 	for i := 2; i <= padLen; i++ {
 		if int(w.buf[w.bSize-i]) != padLen {
-			return errBadPadding
+			return ErrBadPadding
 		}
 	}
 

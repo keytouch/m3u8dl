@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"m3u8dl/cbcio"
+	"m3u8dl/utils"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,10 +19,11 @@ import (
 	"github.com/grafov/m3u8"
 )
 
-const queueLen = 32
-
-//TODO
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36"
+const (
+	tmpSfx          = ".tmp"
+	queueLen        = 32
+	aes128BlockSize = 16
+)
 
 type job struct {
 	id      uint64
@@ -37,6 +40,7 @@ func download(pl *m3u8.MediaPlaylist) {
 		go dlWorker(i+1, jobs, &wg)
 	}
 
+	var segLen int
 	var lastKey, lastIV []byte
 	if *flagKey != "" {
 		var err error
@@ -46,14 +50,13 @@ func download(pl *m3u8.MediaPlaylist) {
 		}
 	}
 
-	var segNum int
 	for _, seg := range pl.Segments {
 		if seg == nil {
 			continue
 		}
-		segNum++
+		segLen++
 
-		if key := seg.Key; *flagKey == "" && key != nil {
+		if key := seg.Key; !*flagRaw && *flagKey == "" && key != nil {
 			if key.Method == "AES-128" {
 				logger.Println("downloading key from:", key.URI)
 				resp, err := httpGet(key.URI)
@@ -61,7 +64,7 @@ func download(pl *m3u8.MediaPlaylist) {
 					logErr.Fatalln(err)
 				}
 
-				lastKey = make([]byte, 16)
+				lastKey = make([]byte, aes128BlockSize)
 				_, err = io.ReadFull(resp.Body, lastKey)
 				if err != nil {
 					logErr.Fatalln(err)
@@ -77,8 +80,9 @@ func download(pl *m3u8.MediaPlaylist) {
 			} else {
 				var err error
 				lastIV, err = hex.DecodeString(key.IV)
-				if err != nil {
-					logErr.Println("bad iv")
+				if len(lastIV) != aes128BlockSize || err != nil {
+					logErr.Println("bad iv, continue with sequence id based iv")
+					lastIV = nil
 				}
 			}
 		}
@@ -90,7 +94,7 @@ func download(pl *m3u8.MediaPlaylist) {
 			iv:  lastIV,
 		}
 		if seg.key != nil && seg.iv == nil {
-			seg.iv = make([]byte, 16)
+			seg.iv = make([]byte, aes128BlockSize)
 			binary.BigEndian.PutUint64(seg.iv[8:], seg.id)
 		}
 		jobs <- seg
@@ -98,7 +102,13 @@ func download(pl *m3u8.MediaPlaylist) {
 	close(jobs)
 
 	wg.Wait()
-	merge(segNum)
+
+	if !*flagNoMerge {
+		err := merge(segLen)
+		if err != nil {
+			logErr.Fatalln(err)
+		}
+	}
 }
 
 func dlWorker(id int, jobs <-chan job, wg *sync.WaitGroup) {
@@ -125,74 +135,101 @@ func dlWorker(id int, jobs <-chan job, wg *sync.WaitGroup) {
 		}
 		logger.Println(logBuf.String())
 
-		req, err := http.NewRequest("GET", seg.url, nil)
-		if err != nil {
-			logErr.Println(err)
-			continue
-		}
-		req.Header.Set("User-Agent", UA)
-		resp, err := dlClient.Do(req)
-		if err != nil {
-			logErr.Println(seg.id, err)
-			continue
+		var segIn io.ReadCloser
+		if utils.IsValidUrl(seg.url) {
+			req, err := http.NewRequest("GET", seg.url, nil)
+			if err != nil {
+				logErr.Println(err)
+				continue
+			}
+			req.Header.Set("User-Agent", *flagUA)
+			resp, err := dlClient.Do(req)
+			if err != nil {
+				logErr.Println(seg.id, err)
+				continue
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				logErr.Println("Response not good:", seg.id)
+				resp.Body.Close()
+				continue
+			}
+
+			segIn = resp.Body
+		} else {
+			var err error
+			segIn, err = os.Open(seg.url)
+			if err != nil {
+				logErr.Println(seg.id, err)
+				continue
+			}
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			logErr.Println("Response not good:", seg.id)
-			continue
-		}
-
-		file, err := os.Create(*flagOutput + strconv.Itoa(int(seg.id)) + ".ts")
+		out, err := os.Create(filepath.Join(*flagTmpDir, strconv.Itoa(int(seg.id))+tmpSfx))
 		if err != nil {
 			logErr.Println(err)
+			segIn.Close()
 			continue
 		}
 
 		if seg.key != nil {
-			w := cbcio.NewWriter(file, seg.key, seg.iv)
-			_, err := io.Copy(w, resp.Body)
+			w := cbcio.NewWriter(out, seg.key, seg.iv)
+			_, err := io.Copy(w, segIn)
 			if err != nil {
 				logErr.Println(err)
+				segIn.Close()
 				continue
 			}
 
 			if err := w.Flush(); err != nil {
 				logErr.Println(err)
+				segIn.Close()
 				continue
 			}
 		} else {
-			_, err := io.Copy(file, resp.Body)
+			_, err := io.Copy(out, segIn)
 			if err != nil {
 				logErr.Println(err)
+				segIn.Close()
 				continue
 			}
 		}
 
-		resp.Body.Close()
-		file.Close()
+		segIn.Close()
+		out.Close()
 	}
 	wg.Done()
 }
 
-func merge(segNum int) {
+func merge(segLen int) error {
 	logger.Println("merging...")
-	merged, err := os.Create("merged.ts")
+	merged, err := os.Create(*flagOutput)
 	if err != nil {
-		logErr.Fatalln(err)
+		return err
 	}
 	defer merged.Close()
 
-	for i := 0; i < segNum; i++ {
-		filename := *flagOutput + strconv.Itoa(i) + ".ts"
-		file, err := os.Open(filename)
+	for i := 0; i < segLen; i++ {
+		tmpFilename := filepath.Join(*flagTmpDir, strconv.Itoa(i)+tmpSfx)
+		tmpFile, err := os.Open(tmpFilename)
 		if err != nil {
-			logErr.Fatalln(err)
+			return err
 		}
-		_, err = io.Copy(merged, file)
+
+		_, err = io.Copy(merged, tmpFile)
 		if err != nil {
-			logErr.Fatalln(err)
+			tmpFile.Close()
+			return err
 		}
-		file.Close()
-		os.Remove(filename)
+
+		err = merged.Sync()
+		if err != nil {
+			tmpFile.Close()
+			return err
+		}
+
+		tmpFile.Close()
+		os.Remove(tmpFilename)
 	}
+	return nil
 }

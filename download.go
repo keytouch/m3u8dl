@@ -70,6 +70,8 @@ func download(pl *m3u8.MediaPlaylist) {
 					logErr.Fatalln(err)
 				}
 
+				logger.Printf("got key: %x\n", lastKey)
+
 				resp.Body.Close()
 			} else {
 				lastKey = nil

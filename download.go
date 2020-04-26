@@ -182,12 +182,14 @@ func dlWorker(id int, jobs <-chan job, wg *sync.WaitGroup) {
 				if err != nil {
 					logErr.Printf("seg %d decrypt/write error: %v\n", seg.id, err)
 					segIn.Close()
+					out.Close()
 					continue
 				}
 
 				if err := w.Final(); err != nil {
 					logErr.Printf("seg %d decrypt/final error: %v\n", seg.id, err)
 					segIn.Close()
+					out.Close()
 					continue
 				}
 			} else {
@@ -195,6 +197,7 @@ func dlWorker(id int, jobs <-chan job, wg *sync.WaitGroup) {
 				if err != nil {
 					logErr.Printf("seg %d write error: %v\n", seg.id, err)
 					segIn.Close()
+					out.Close()
 					continue
 				}
 			}

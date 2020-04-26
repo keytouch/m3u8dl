@@ -53,10 +53,10 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	return
 }
 
-// Flush will un-pad the last block and write everything to the underlying writer
-func (w *Writer) Flush() (err error) {
+// Final will un-pad the last block and write everything to the underlying writer
+func (w *Writer) Final() (err error) {
 	if len(w.buf) != w.bSize {
-		return errors.New("Not a whole block buf when calling Flush")
+		return errors.New("not a whole block buf when calling Flush")
 	}
 
 	w.blockMode.CryptBlocks(w.buf, w.buf)

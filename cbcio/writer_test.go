@@ -28,7 +28,7 @@ func (w *compareWriter) Write(p []byte) (n int, err error) {
 }
 
 func TestWriter(t *testing.T) {
-	decFile, err := os.Open("testdata/media_b1973000_1_dec.ts")
+	decFile, err := os.Open("testdata/media_b1973000_1_dec.bigtest")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,8 @@ func TestWriter(t *testing.T) {
 
 	key, _ := hex.DecodeString("5E0ECC501DBC368679689947B5E8D5E1")
 	iv, _ := hex.DecodeString("00000000000000000000000000000001")
-	testFile, err := os.Open("testdata/media_b1973000_1.ts")
+
+	testFile, err := os.Open("testdata/media_b1973000_1.bigtest")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,14 +47,16 @@ func TestWriter(t *testing.T) {
 
 	bufSizes := []int{1, 7, 15, 32 * 1024}
 	for _, bufSize := range bufSizes {
-		testFile.Seek(0, 0)
-		decFile.Seek(0, 0)
+		_, _ = testFile.Seek(0, 0)
+		_, _ = decFile.Seek(0, 0)
+
 		w := NewWriter(cw, key, iv)
 		_, err = io.CopyBuffer(w, testFile, make([]byte, bufSize))
 		if err != nil {
 			t.Errorf("%v when buf size is %d", err, bufSize)
 		}
-		err = w.Flush()
+
+		err = w.Final()
 		if err != nil {
 			t.Errorf("%v when buf size is %d", err, bufSize)
 		}

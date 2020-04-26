@@ -48,6 +48,8 @@ func main() {
 
 	if *flagBaseURL == "" {
 		*flagBaseURL = (*flagInput)[:strings.LastIndex(*flagInput, "/")+1]
+	} else if (*flagBaseURL)[len(*flagBaseURL)-1] != '/' {
+		*flagBaseURL = *flagBaseURL + "/"
 	}
 	logger.Println("using base URL:", *flagBaseURL)
 

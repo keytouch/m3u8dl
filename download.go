@@ -127,16 +127,16 @@ func dlWorker(id int, jobs <-chan job, wg *sync.WaitGroup) {
 
 	for seg := range jobs {
 		var logBuf strings.Builder
-		fmt.Fprintf(&logBuf, "worker [%d] downloading %d", id, seg.id)
+		fmt.Fprintf(&logBuf, "worker [%d] downloading seg %d", id, seg.id)
 		if seg.key != nil {
-			fmt.Fprintf(&logBuf, " with key %x iv %x", seg.key, seg.iv)
+			fmt.Fprintf(&logBuf, " with key %x, iv %x", seg.key, seg.iv)
 		}
 		logger.Println(logBuf.String())
 
 		retry := 0
 		for ; retry <= *flagRetry; retry++ {
 			if retry > 0 {
-				logger.Printf("retry seg %d\n", seg.id)
+				logger.Printf("retry seg %d: %d\n", seg.id, retry)
 			}
 
 			var segIn io.ReadCloser

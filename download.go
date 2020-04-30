@@ -61,6 +61,7 @@ func download(pl *m3u8.MediaPlaylist) error {
 				lastKey = make([]byte, aes128BlockSize)
 				_, err = io.ReadFull(resp.Body, lastKey)
 				if err != nil {
+					resp.Body.Close()
 					return fmt.Errorf("fetch key failed: %w", err)
 				}
 

@@ -40,7 +40,7 @@ func download(pl *m3u8.MediaPlaylist) error {
 		go dlWorker(i+1, jobs, &wg)
 	}
 
-	var segLen int
+	var seqIDs []uint64
 	var lastIV []byte
 	lastKey := customKey
 
@@ -48,7 +48,7 @@ func download(pl *m3u8.MediaPlaylist) error {
 		if seg == nil {
 			break
 		}
-		segLen++
+		seqIDs = append(seqIDs, seg.SeqId)
 
 		if key := seg.Key; !*flagRaw && customKey == nil && key != nil {
 			if key.Method == "AES-128" {
@@ -100,7 +100,7 @@ func download(pl *m3u8.MediaPlaylist) error {
 	wg.Wait()
 
 	if !*flagNoMerge {
-		err := merge(segLen)
+		err := merge(seqIDs)
 		if err != nil {
 			return fmt.Errorf("merge failed: %w", err)
 		}
@@ -214,7 +214,7 @@ func dlWorker(id int, jobs <-chan job, wg *sync.WaitGroup) {
 	}
 }
 
-func merge(segLen int) error {
+func merge(seqIDs []uint64) error {
 	logger.Println("merging...")
 	merged, err := os.Create(*flagOutput)
 	if err != nil {
@@ -222,8 +222,8 @@ func merge(segLen int) error {
 	}
 	defer merged.Close()
 
-	for i := 0; i < segLen; i++ {
-		tmpFilename := filepath.Join(*flagTmpDir, strconv.Itoa(i)+tmpSfx)
+	for _, id := range seqIDs {
+		tmpFilename := filepath.Join(*flagTmpDir, strconv.Itoa(int(id))+tmpSfx)
 		tmpFile, err := os.Open(tmpFilename)
 		if err != nil {
 			return fmt.Errorf("open temp file error: %w", err)

@@ -137,7 +137,7 @@ func dlWorker(id int, jobs <-chan job, wg *sync.WaitGroup) {
 		retry := 0
 		for ; retry <= *flagRetry; retry++ {
 			if retry > 0 {
-				logger.Printf("retry seg %d: %d\n", seg.id, retry)
+				logger.Printf("worker [%d] retrying seg %d for %d time(s)\n", id, seg.id, retry)
 			}
 
 			var segIn io.ReadCloser

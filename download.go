@@ -52,6 +52,10 @@ func download(pl *m3u8.MediaPlaylist) error {
 
 		if key := seg.Key; !*flagRaw && customKey == nil && key != nil {
 			if key.Method == "AES-128" {
+                if utils.IsValidUrl(key.URI) == false {
+                    key.URI = *flagBaseURL + key.URI
+                }
+
 				logger.Println("downloading key from:", key.URI)
 				resp, err := httpGet(key.URI)
 				if err != nil {

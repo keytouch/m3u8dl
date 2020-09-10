@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -17,20 +18,20 @@ var (
 var (
 	flagInput   = flag.String("i", "", "`file or URL` to read")
 	flagOutput  = flag.String("o", "", "Write to `file`")
-	flagTmpDir  = flag.String("t", "", "Temp directory to store downloaded parts")
+	flagTmpDir  = flag.String("t", filepath.Join(os.TempDir(), "m3u8dl"), "Temp directory to store downloaded parts")
 	flagThread  = flag.Int("thread", 1, "Concurrent downloading threads. Suggestion: <= 32 (no hard limit imposed)")
 	flagUA      = flag.String("UA", defaultUA, "Send User-Agent to server")
 	flagBaseURL = flag.String("baseurl", "", "Base URL to reference (useful when m3u8 file is local file)")
 	flagKey     = flag.String("key", "", "Decryption key, overrides key declared in m3u8 (in 32-char hex form)")
 	flagRaw     = flag.Bool("raw", false, "Don't attempt to decrypt. Usually you should also turn on nomerge")
 	flagNoMerge = flag.Bool("nomerge", false, "Don't attempt to merge segments (segments stay in the tmp directory)")
-	flagRetry   = flag.Int("retry", 3, "retry `num` times after failure")
+	flagRetry   = flag.Int("retry", 30, "retry `num` times after failure")
 )
 var customKey []byte
 
 func main() {
 	flag.Parse()
-
+	os.Mkdir(*flagTmpDir, 0755)
 	if !*flagNoMerge && *flagOutput == "" {
 		logErr.Fatalln("output file must be specified")
 	}
